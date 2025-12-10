@@ -4,9 +4,7 @@ from langchain_community.document_loaders import AmazonTextractPDFLoader
 from langchain_aws.embeddings import BedrockEmbeddings
 from langchain_aws import ChatBedrock
 from langchain_chroma import Chroma
-from chromadb import Client as ChromaClient
 from langchain_core.prompts import PromptTemplate
-from langchain.tools import tool
 from langchain_core.runnables import RunnableSequence, RunnablePassthrough
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
@@ -163,7 +161,7 @@ Question: {question}
 #      MAIN HANDLER
 # =========================
 
-def ask_chatbot(chain, question: str):
+def ask_chatbot(question: str):
     response = chain.invoke(question)
     return response.content if hasattr(response, "content") else response
 
@@ -175,13 +173,15 @@ def ask_chatbot(chain, question: str):
 if __name__ == "__main__":
     config = load_config()
     session, textract_client = init_aws_clients(config)
-
-    chunks = load_and_split_pdf(textract_client, config)
-
     embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0")
 
-    db = init_vector_db(chunks, embeddings, config)
+    if os.path.exists(config["PERSIST_DIR"]):
+        print("Vector DB exists → Skipping Textract, chunking, embedding...")
+        chunks = None  # Chunks not needed if DB exists
+    else:
+        chunks = load_and_split_pdf(textract_client, config)
 
+    db = init_vector_db(chunks, embeddings, config)
     chain = build_chain(session, db)
 
     print("\n RAG PDF Chatbot Ready!")
@@ -191,5 +191,5 @@ if __name__ == "__main__":
         if query.lower() == "exit":
             break
 
-        answer = ask_chatbot(chain, query)
+        answer = ask_chatbot(query)
         print("\n Answer:", answer)
